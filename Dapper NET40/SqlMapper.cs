@@ -898,7 +898,7 @@ namespace Dapper
             handler = null;
             var nullUnderlyingType = Nullable.GetUnderlyingType(type);
             if (nullUnderlyingType != null) type = nullUnderlyingType;
-            if (type.IsEnum() && !typeMap.ContainsKey(type))
+            if (type.IsEnum() && !typeMap.ContainsKey(type) && !typeHandlers.ContainsKey(type))
             {
                 type = Enum.GetUnderlyingType(type);
             }
@@ -3495,6 +3495,15 @@ this IDbConnection cnn, string sql, Func<TFirst, TSecond, TThird, TFourth, TRetu
             }
 #pragma warning restore 618
 
+            ITypeHandler handler;
+            if(typeHandlers.TryGetValue(type, out handler))
+            {
+                return r =>
+                {
+                    var val = r.GetValue(index);
+                    return val is DBNull ? null : handler.Parse(type, val);
+                };
+            }
             if (effectiveType.IsEnum())
             {   // assume the value is returned as the correct type (int/byte/etc), but box back to the typed enum
                 return r =>
@@ -3505,15 +3514,6 @@ this IDbConnection cnn, string sql, Func<TFirst, TSecond, TThird, TFourth, TRetu
                         val = Convert.ChangeType(val, Enum.GetUnderlyingType(effectiveType), CultureInfo.InvariantCulture);
                     }
                     return val is DBNull ? null : Enum.ToObject(effectiveType, val);
-                };
-            }
-            ITypeHandler handler;
-            if(typeHandlers.TryGetValue(type, out handler))
-            {
-                return r =>
-                {
-                    var val = r.GetValue(index);
-                    return val is DBNull ? null : handler.Parse(type, val);
                 };
             }
             return r =>
@@ -3529,6 +3529,11 @@ this IDbConnection cnn, string sql, Func<TFirst, TSecond, TThird, TFourth, TRetu
             if (value is T) return (T)value;
             var type = typeof(T);
             type = Nullable.GetUnderlyingType(type) ?? type;
+            ITypeHandler handler;
+            if (typeHandlers.TryGetValue(type, out handler))
+            {
+                return (T)handler.Parse(type, value);
+            }
             if (type.IsEnum())
             {
                 if (value is float || value is double || value is decimal)
@@ -3536,11 +3541,6 @@ this IDbConnection cnn, string sql, Func<TFirst, TSecond, TThird, TFourth, TRetu
                     value = Convert.ChangeType(value, Enum.GetUnderlyingType(type), CultureInfo.InvariantCulture);
                 }
                 return (T)Enum.ToObject(type, value);
-            }
-            ITypeHandler handler;
-            if (typeHandlers.TryGetValue(type, out handler))
-            {
-                return (T)handler.Parse(type, value);
             }
             return (T)Convert.ChangeType(value, type, CultureInfo.InvariantCulture);
         }
